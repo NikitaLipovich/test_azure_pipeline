@@ -1,0 +1,147 @@
+name: terraform-azure-vm
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform-azure-vm.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform-azure-vm.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to run"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
+      environment:
+        description: "Target environment — selects vars/<env>.tfvars"
+        required: false
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      location:
+        description: "Override Azure region (leave empty to use vars file value)"
+        required: false
+        default: ""
+      virtual_machine_size:
+        description: "Override VM size — e.g. Standard_B1ls if B1s is SkuNotAvailable"
+        required: false
+        default: ""
+
+# Required for OIDC (passwordless Azure login via Federated Credential)
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: "Terraform ${{ inputs.action || (github.event_name == 'pull_request' && 'plan') || 'apply' }} [${{ inputs.environment || 'dev' }}]"
+    runs-on: ubuntu-latest
+
+    # Required Reviewers gate in GitHub Environments prevents accidental apply
+    environment: azure-prod
+
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Azure login via OIDC — no client secret stored anywhere ─────────────
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Terraform setup ─────────────────────────────────────────────────────
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # ── Plan ─────────────────────────────────────────────────────────────────
+      # Base values come from vars/<env>.tfvars.
+      # Optional -var overrides take precedence if inputs are non-empty.
+      - name: Terraform Plan
+        id: plan
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_ENV: ${{ inputs.environment || 'dev' }}
+          OVERRIDE_LOCATION: ${{ inputs.location }}
+          OVERRIDE_VM_SIZE: ${{ inputs.virtual_machine_size }}
+        run: |
+          PLAN_ARGS="-input=false -out=tfplan -var-file=vars/${TF_ENV}.tfvars"
+          [[ -n "$OVERRIDE_LOCATION" ]] && PLAN_ARGS="$PLAN_ARGS -var=location=$OVERRIDE_LOCATION"
+          [[ -n "$OVERRIDE_VM_SIZE"  ]] && PLAN_ARGS="$PLAN_ARGS -var=virtual_machine_size=$OVERRIDE_VM_SIZE"
+          terraform plan $PLAN_ARGS
+
+      # ── Comment plan result on PRs ───────────────────────────────────────────
+      - name: Comment Plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ steps.plan.outcome }}';
+            const status  = outcome === 'success' ? '✅ Plan succeeded' : '❌ Plan failed';
+            const body = [
+              `### Terraform Plan — ${status}`,
+              '',
+              `**Commit:** \`${context.sha.slice(0, 8)}\``,
+              `**Env / var-file:** \`vars/${{ inputs.environment || 'dev' }}.tfvars\``,
+              `**Location override:** \`${{ inputs.location || '(from tfvars)' }}\``,
+              `**VM size override:** \`${{ inputs.virtual_machine_size || '(from tfvars)' }}\``,
+              '',
+              '_Trigger manually with `action: apply` to provision the VM._',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      # ── Apply ─────────────────────────────────────────────────────────────────
+      - name: Terraform Apply
+        if: >
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      # ── Destroy (manual only) ─────────────────────────────────────────────────
+      - name: Terraform Destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_ENV: ${{ inputs.environment || 'dev' }}
+          OVERRIDE_LOCATION: ${{ inputs.location }}
+          OVERRIDE_VM_SIZE: ${{ inputs.virtual_machine_size }}
+        run: |
+          DESTROY_ARGS="-input=false -auto-approve -var-file=vars/${TF_ENV}.tfvars"
+          [[ -n "$OVERRIDE_LOCATION" ]] && DESTROY_ARGS="$DESTROY_ARGS -var=location=$OVERRIDE_LOCATION"
+          [[ -n "$OVERRIDE_VM_SIZE"  ]] && DESTROY_ARGS="$DESTROY_ARGS -var=virtual_machine_size=$OVERRIDE_VM_SIZE"
+          terraform destroy $DESTROY_ARGS

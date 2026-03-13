@@ -1,0 +1,18 @@
+# Terraform state — never commit
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Saved plan binary
+tfplan
+
+# Local override files — never commit sensitive values
+*.local.tfvars
+*.secret.tfvars
+override.tf
+override.tf.json
+
+# Terraform internals
+.terraform/
+.terraform.lock.hcl
+crash.log
