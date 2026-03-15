@@ -1,6 +1,6 @@
 location               = "eastus"
 resource_group_name    = "resource-group-terraform-azure-vm-dev"
-virtual_machine_size   = "Standard_B2s"
+virtual_machine_size   = "Standard_D2s_v3"
 admin_username         = "azureuser"
 auto_shutdown_time     = "2200"
 auto_shutdown_timezone = "Israel Standard Time"
