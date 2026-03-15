@@ -1,34 +1,34 @@
-# Ответы на вопросы по Terraform и Azure
+# Answers to Questions about Terraform and Azure
 
 ---
 
-## 1. VNet / Subnet / NIC — что это и зачем
+## 1. VNet / Subnet / NIC — What They Are and Why They Exist
 
-Думай о сети в Azure как о физической корпоративной сети, только виртуальной.
+Think of the network in Azure like a physical corporate network, only virtual.
 
-**VNet (Virtual Network)** = твоя частная сеть в облаке. Изолированное пространство, внутри которого ресурсы могут общаться между собой. Снаружи ничего не видит, пока сам не откроешь.
+**VNet (Virtual Network)** = your private network in the cloud. An isolated space where resources can communicate with each other. Nothing from outside can see it until you open it yourself.
 
-**Subnet (подсеть)** = сегмент внутри VNet. Зачем делить? Чтобы разграничить ресурсы: базы данных в одной подсети, веб-серверы в другой. У каждой подсети свои правила безопасности. У нас одна VM — одна подсеть.
+**Subnet** = a segment inside a VNet. Why divide it? To separate resources: databases in one subnet, web servers in another. Each subnet has its own security rules. We have one VM — one subnet.
 
-**NIC (Network Interface Card)** = виртуальная сетевая карта. Именно NIC "вставляется" в VM и говорит: "я нахожусь в такой-то подсети, у меня такой-то приватный IP, и вот мой публичный IP". VM без NIC = компьютер без сетевой карты.
+**NIC (Network Interface Card)** = a virtual network card. The NIC is what "plugs into" the VM and says: "I am on this subnet, I have this private IP, and here is my public IP". A VM without a NIC = a computer without a network card.
 
-**Аналогия:**
+**Analogy:**
 ```
-VNet     = здание с внутренней сетью
-Subnet   = этаж в этом здании
-NIC      = сетевой разъём в стене, к которому подключается компьютер (VM)
-Public IP = номер телефона, по которому можно позвонить снаружи
+VNet     = a building with an internal network
+Subnet   = a floor in that building
+NIC      = the network socket in the wall that a computer (VM) plugs into
+Public IP = the phone number that can be called from outside
 ```
 
-**О чём думать как разработчик при настройке:**
-- Выбери адресное пространство VNet с запасом (`/16` = 65k адресов — более чем достаточно)
-- Подсети не должны пересекаться между собой
-- NIC должна быть в той же Resource Group и регионе что и VM
-- NSG (файрвол) привязывается к NIC или к подсети — у нас привязан к NIC
+**What to think about as a developer when configuring:**
+- Choose a VNet address space with room to grow (`/16` = 65k addresses — more than enough)
+- Subnets must not overlap each other
+- The NIC must be in the same Resource Group and region as the VM
+- NSG (firewall) is attached to the NIC or to the subnet — in our case it is attached to the NIC
 
 ---
 
-## 2. Блок `features {}`
+## 2. The `features {}` Block
 
 ```hcl
 provider "azurerm" {
@@ -36,14 +36,14 @@ provider "azurerm" {
 }
 ```
 
-Это **обязательный пустой блок** — требование провайдера `azurerm`. Без него Terraform выдаст ошибку при `init`.
+This is a **required empty block** — it is a requirement of the `azurerm` provider. Without it, Terraform will throw an error at `init`.
 
-Почему он вообще существует? Внутрь `features {}` можно передавать опциональные настройки поведения провайдера, например:
+Why does it exist at all? Inside `features {}` you can pass optional settings for the provider's behavior, for example:
 
 ```hcl
 features {
   virtual_machine {
-    delete_os_disk_on_deletion = true  # удалять диск при удалении VM
+    delete_os_disk_on_deletion = true  # delete the disk when deleting the VM
   }
   key_vault {
     purge_soft_delete_on_destroy = true
@@ -51,38 +51,38 @@ features {
 }
 ```
 
-У нас он пустой — используются дефолты. Но передать его обязательно.
+Ours is empty — defaults are used. But it must be present.
 
 ---
 
-## 3. Переменные в `variables.tf` — создаёт ли Azure ресурс автоматически?
+## 3. Variables in `variables.tf` — Does Azure Create a Resource Automatically?
 
-**Нет. `variables.tf` — это только объявление параметров, Azure ничего не создаёт.**
+**No. `variables.tf` only declares parameters; Azure creates nothing.**
 
-Разберём на примере `resource_group_name`:
+Let's break it down using `resource_group_name` as an example:
 
 ```hcl
-# variables.tf — только ОБЪЯВЛЯЕТ что переменная существует
+# variables.tf — only DECLARES that the variable exists
 variable "resource_group_name" {
   type = string
 }
 
-# dev.tfvars — задаёт ЗНАЧЕНИЕ
+# dev.tfvars — sets the VALUE
 resource_group_name = "resource-group-terraform-azure-vm-dev"
 
-# main.tf — вот здесь Azure СОЗДАЁТ ресурс
+# main.tf — this is where Azure CREATES the resource
 resource "azurerm_resource_group" "resource_group" {
-  name = var.resource_group_name  # берёт значение из переменной
+  name = var.resource_group_name  # takes the value from the variable
 }
 ```
 
-Цепочка: `variables.tf` (объявление) → `dev.tfvars` (значение) → `main.tf` (создание в Azure).
+Chain: `variables.tf` (declaration) → `dev.tfvars` (value) → `main.tf` (creation in Azure).
 
-**Важно:** если переменная объявлена, но нигде не используется в `resource "..."` — в Azure ничего не создастся.
+**Important:** if a variable is declared but not used anywhere in a `resource "..."` block — nothing will be created in Azure.
 
 ---
 
-## 4. `ssh_public_key` — почему `sensitive = true`, для чего и как настроить
+## 4. `ssh_public_key` — Why `sensitive = true`, What It's For, and How to Configure It
 
 ```hcl
 variable "ssh_public_key" {
@@ -91,38 +91,38 @@ variable "ssh_public_key" {
 }
 ```
 
-**`sensitive = true` — это не `true` как значение переменной.** Это атрибут объявления, который говорит Terraform: "не показывай это значение в логах и терминале". Само значение — это содержимое публичного SSH-ключа.
+**`sensitive = true` is not `true` as the variable's value.** It is a declaration attribute that tells Terraform: "do not show this value in logs or the terminal". The actual value is the contents of the public SSH key.
 
-**Для чего:** при `disable_password_authentication = true` в VM пароль отключён, войти можно только по SSH-ключу. Публичный ключ загружается в VM (`~/.ssh/authorized_keys`), а приватный остаётся у тебя локально.
+**What it's for:** with `disable_password_authentication = true` in the VM, password access is disabled; you can only log in with an SSH key. The public key is uploaded to the VM (`~/.ssh/authorized_keys`), while the private key stays with you locally.
 
-**Это для Azure** (не для GitHub). Нужен чтобы войти на VM по SSH.
+**This is for Azure** (not for GitHub). It is needed to access the VM via SSH.
 
-**Как настроить на Windows PowerShell:**
+**How to configure on Windows PowerShell:**
 
 ```powershell
-# Шаг 1: Сгенерировать ключ (один раз)
+# Step 1: Generate the key (once)
 ssh-keygen -t ed25519 -C "azure-vm" -f $HOME\.ssh\azure_vm_key
-# Создаст два файла:
-# ~/.ssh/azure_vm_key     — приватный (только у тебя)
-# ~/.ssh/azure_vm_key.pub — публичный (загружается в Azure/GitHub)
+# Creates two files:
+# ~/.ssh/azure_vm_key     — private (only with you)
+# ~/.ssh/azure_vm_key.pub — public (uploaded to Azure/GitHub)
 
-# Шаг 2: Установить переменную окружения в PowerShell
+# Step 2: Set the environment variable in PowerShell
 $env:TF_VAR_ssh_public_key = Get-Content "$HOME\.ssh\azure_vm_key.pub" -Raw
 
-# Проверить что установилась
+# Verify it was set
 echo $env:TF_VAR_ssh_public_key
 ```
 
 ---
 
-## 5. Переменные окружения в Windows PowerShell
+## 5. Environment Variables in Windows PowerShell
 
-**Для текущей сессии** (временно, пропадёт при закрытии):
+**For the current session** (temporary, lost when the window is closed):
 ```powershell
 $env:TF_VAR_ssh_public_key = Get-Content "$HOME\.ssh\azure_vm_key.pub" -Raw
 ```
 
-**Постоянно для текущего пользователя:**
+**Permanently for the current user:**
 ```powershell
 [System.Environment]::SetEnvironmentVariable(
   "TF_VAR_ssh_public_key",
@@ -131,18 +131,18 @@ $env:TF_VAR_ssh_public_key = Get-Content "$HOME\.ssh\azure_vm_key.pub" -Raw
 )
 ```
 
-После этого перезапусти PowerShell — переменная будет доступна всегда.
+After this, restart PowerShell — the variable will always be available.
 
-**Почему именно `TF_VAR_`?** Terraform автоматически читает любую переменную окружения с префиксом `TF_VAR_` и маппит её на одноимённую переменную в Terraform. `TF_VAR_ssh_public_key` → `var.ssh_public_key`.
+**Why `TF_VAR_`?** Terraform automatically reads any environment variable with the `TF_VAR_` prefix and maps it to the same-named variable in Terraform. `TF_VAR_ssh_public_key` → `var.ssh_public_key`.
 
 ---
 
-## 6. `tags` — что это и где используется
+## 6. `tags` — What They Are and Where They Are Used
 
 ```hcl
 # variables.tf
 variable "tags" {
-  type = map(string)  # словарь: ключ → значение
+  type = map(string)  # dictionary: key → value
 }
 
 # dev.tfvars
@@ -153,131 +153,131 @@ tags = {
 }
 ```
 
-**Тег — это метка на ресурсе Azure.** Аналог label в Kubernetes или стикера на коробке.
+**A tag is a label on an Azure resource.** It is the equivalent of a label in Kubernetes or a sticker on a box.
 
-**Где используется:** на всех ресурсах где написано `tags = var.tags` — VNet, Public IP, NIC, VM и Resource Group.
+**Where it is used:** on all resources that have `tags = var.tags` — VNet, Public IP, NIC, VM, and Resource Group.
 
-**Что увидишь в Azure Portal:** в любом ресурсе → вкладка Tags → там будет:
+**What you'll see in the Azure Portal:** on any resource → the Tags tab → it will show:
 ```
 environment = dev
 project     = azure-vm-terraform
 managed_by  = terraform
 ```
 
-**Зачем нужны:**
-- Фильтрация: "покажи все ресурсы с `environment=dev`"
-- Биллинг: можно сгруппировать затраты по тегам (`project=X стоит $50/месяц`)
-- Автоматизация: скрипты могут искать ресурсы по тегам
-- Аудит: сразу видно что этот ресурс создал Terraform
+**Why they are needed:**
+- Filtering: "show all resources with `environment=dev`"
+- Billing: you can group costs by tag (`project=X costs $50/month`)
+- Automation: scripts can search for resources by tags
+- Auditing: immediately shows that this resource was created by Terraform
 
-**Это только для Azure** (не для GitHub). GitHub не знает о тегах Azure.
-
----
-
-## 7. Пересекаются ли переменные из `variables.tf`, `dev.tfvars`, `prod.tfvars`?
-
-Нет, они **дополняют** друг друга — каждый файл выполняет свою роль:
-
-```
-variables.tf   = СХЕМА (что за переменная, какого типа, описание)
-dev.tfvars     = ЗНАЧЕНИЯ для dev окружения
-prod.tfvars    = ЗНАЧЕНИЯ для prod окружения
-```
-
-Лишних файлов нет. Terraform при запуске:
-1. Читает `variables.tf` — узнаёт какие переменные ожидаются
-2. Читает указанный `-var-file` (dev или prod) — получает конкретные значения
-3. Подставляет значения везде где `var.xxx`
-
-`dev.tfvars` и `prod.tfvars` никогда не читаются одновременно.
+**This is for Azure only** (not for GitHub). GitHub does not know about Azure tags.
 
 ---
 
-## 8. Зачем разделение на dev и prod?
+## 7. Do the Variables in `variables.tf`, `dev.tfvars`, `prod.tfvars` Overlap?
 
-Чтобы **один и тот же код** создавал разные инфраструктуры без правки файлов.
+No, they **complement** each other — each file has its own role:
+
+```
+variables.tf   = SCHEMA (what kind of variable, its type, description)
+dev.tfvars     = VALUES for the dev environment
+prod.tfvars    = VALUES for the prod environment
+```
+
+There are no redundant files. When Terraform runs:
+1. It reads `variables.tf` — learns which variables are expected
+2. It reads the specified `-var-file` (dev or prod) — gets the concrete values
+3. It substitutes values everywhere `var.xxx` appears
+
+`dev.tfvars` and `prod.tfvars` are never read at the same time.
+
+---
+
+## 8. Why Separate dev and prod Environments?
+
+So that **the same code** creates different infrastructures without editing files.
 
 | | dev | prod |
 |---|---|---|
-| Регион | northeurope | westeurope |
+| Region | northeurope | westeurope |
 | Resource Group | ...-dev | ...-prod |
-| Выключение | 22:00 | 23:00 |
+| Shutdown | 22:00 | 23:00 |
 
-**Практический смысл:**
-- dev: тестируешь новый конфиг, ломаешь — не страшно
-- prod: стабильная среда, изменения только после проверки в dev
-- Оба существуют одновременно независимо (разные Resource Groups в Azure)
-- Нет риска случайно `destroy` прод вместо дева
-
----
-
-## 9. Правила расчёта адресов в `network.tf`
-
-```
-VNet:   10.10.0.0/16   → 65534 адреса
-Subnet: 10.10.1.0/24   → 254 адреса
-```
-
-**Как читать CIDR нотацию:**
-- `10.10.0.0/16` — первые 16 бит фиксированы (`10.10`), остальные 16 свободны → 2^16 - 2 = 65534 адреса
-- `10.10.1.0/24` — первые 24 бита фиксированы (`10.10.1`), последние 8 свободны → 2^8 - 2 = 254 адреса
-
-**Почему именно `10.10.x.x`:** диапазон `10.0.0.0/8` — приватный (RFC 1918), в интернете не маршрутизируется. Можно было взять `10.0.0.0`, `172.16.0.0`, `192.168.0.0` — всё равно. Выбор `10.10` — читаемо и не конфликтует с типичными домашними сетями (`192.168.1.x`).
-
-**Правила при ручной настройке:**
-1. Subnet должна быть **внутри** VNet: `10.10.1.0/24` входит в `10.10.0.0/16` ✓
-2. Подсети внутри одного VNet не должны **пересекаться**
-3. Azure резервирует 5 адресов в каждой подсети (первые 4 + последний) — реально доступно 249 из 254
-4. Выбирай VNet с запасом (`/16`), Subnet — по реальной потребности
-5. Если планируешь несколько подсетей — нарежь заранее: `10.10.1.0/24`, `10.10.2.0/24`, `10.10.3.0/24`
+**Practical purpose:**
+- dev: test a new config, break things — no big deal
+- prod: stable environment, changes only after testing in dev
+- Both exist simultaneously and independently (different Resource Groups in Azure)
+- No risk of accidentally `destroy`-ing prod instead of dev
 
 ---
 
-## 10. Почему динамический IP, а не статический?
+## 9. Address Calculation Rules in `network.tf`
+
+```
+VNet:   10.10.0.0/16   → 65534 addresses
+Subnet: 10.10.1.0/24   → 254 addresses
+```
+
+**How to read CIDR notation:**
+- `10.10.0.0/16` — first 16 bits are fixed (`10.10`), remaining 16 are free → 2^16 - 2 = 65534 addresses
+- `10.10.1.0/24` — first 24 bits are fixed (`10.10.1`), last 8 are free → 2^8 - 2 = 254 addresses
+
+**Why `10.10.x.x` specifically:** the `10.0.0.0/8` range is private (RFC 1918) and is not routed on the internet. You could use `10.0.0.0`, `172.16.0.0`, `192.168.0.0` — they all work. The choice of `10.10` is readable and does not conflict with typical home networks (`192.168.1.x`).
+
+**Rules for manual configuration:**
+1. The Subnet must be **inside** the VNet: `10.10.1.0/24` is within `10.10.0.0/16` ✓
+2. Subnets within the same VNet must not **overlap**
+3. Azure reserves 5 addresses in each subnet (first 4 + last) — only 249 out of 254 are actually available
+4. Choose the VNet with plenty of room (`/16`); size the Subnet to actual needs
+5. If you plan multiple subnets — carve them out upfront: `10.10.1.0/24`, `10.10.2.0/24`, `10.10.3.0/24`
+
+---
+
+## 10. Why Dynamic IP Instead of Static?
 
 ```hcl
 allocation_method = "Dynamic"
 private_ip_address_allocation = "Dynamic"
 ```
 
-**Статический публичный IP в Azure стоит денег** (~$3-4/месяц), даже когда VM выключена.
+**A static public IP in Azure costs money** (~$3–4/month), even when the VM is off.
 
-**Динамический** — бесплатен, но IP меняется при каждом запуске VM.
+**Dynamic** — free, but the IP changes each time the VM starts.
 
-**Для нашего случая (dev/учебный проект):**
-- VM выключается каждый день по расписанию
-- После включения IP поменяется — не страшно, IP всегда виден в outputs
-- Экономия денег важнее стабильного IP
+**For our case (dev/learning project):**
+- The VM shuts down every day on a schedule
+- After starting, the IP will change — that's fine, the IP is always visible in outputs
+- Saving money is more important than a stable IP
 
-**Для прода** где нужен стабильный IP (DNS, сертификат) — используй `Static`.
+**For prod** where a stable IP is needed (DNS, certificate) — use `Static`.
 
 ---
 
-## 11. Цепочка зависимостей — зачем она нужна
+## 11. The Dependency Chain — Why It's Needed
 
-Terraform не может создать NIC без Subnet, а Subnet без VNet. Он это понимает через **ссылки между ресурсами**:
+Terraform cannot create a NIC without a Subnet, or a Subnet without a VNet. It understands this through **references between resources**:
 
 ```hcl
-# NIC ссылается на Subnet
+# NIC references the Subnet
 subnet_id = azurerm_subnet.subnet.id
-            ↑ здесь Terraform видит зависимость
+            ↑ Terraform sees the dependency here
 ```
 
-**Зачем это нужно:** чтобы Terraform знал порядок создания и удаления.
+**Why it is needed:** so Terraform knows the order of creation and deletion.
 
-**Создание — сначала то, от чего зависят другие:**
+**Creation — dependencies first:**
 ```
 Resource Group → VNet → Subnet ─┐
                 Public IP ──────→ NIC → NSG Association → VM → Shutdown
 ```
 
-**Удаление:** в обратном порядке — нельзя удалить VNet пока в нём есть Subnet с NIC.
+**Deletion:** in reverse order — you can't delete a VNet while it still has a Subnet with a NIC.
 
-**Независимые ресурсы создаются параллельно:** VNet и Public IP не зависят друг от друга — Terraform запускает их одновременно.
+**Independent resources are created in parallel:** VNet and Public IP don't depend on each other — Terraform launches them simultaneously.
 
-**Конкретные места в коде где прописаны зависимости:**
+**Specific places in the code where dependencies are defined:**
 
-| Файл | Строка | Зависимость |
+| File | Line | Dependency |
 |---|---|---|
 | `network.tf:4` | `location = azurerm_resource_group.resource_group.location` | VNet ← Resource Group |
 | `network.tf:12` | `virtual_network_name = azurerm_virtual_network.virtual_network.name` | Subnet ← VNet |
@@ -288,33 +288,33 @@ Resource Group → VNet → Subnet ─┐
 
 ---
 
-## 12. SSH из любого источника (`*`) — правильно ли это?
+## 12. SSH From Any Source (`*`) — Is This Correct?
 
 ```hcl
-source_address_prefix = "*"  # с любого IP
+source_address_prefix = "*"  # from any IP
 ```
 
-**Нет, это небезопасно для прода.** Для учебного проекта — приемлемо.
+**No, this is not secure for prod.** For a learning project — it is acceptable.
 
-При `*` любой человек в интернете может попытаться подключиться по SSH. Пароль отключён (только ключ), поэтому без приватного ключа всё равно не войдут. Но боты всё равно долбятся и создают шум в логах.
+With `*`, anyone on the internet can attempt to connect via SSH. The password is disabled (key only), so without the private key they still won't get in. But bots will still hammer the port and create noise in the logs.
 
-**Варианты:**
+**Options:**
 
-| Вариант | Пример | Когда использовать |
+| Option | Example | When to use |
 |---|---|---|
-| Любой (текущее) | `"*"` | Учеба, динамический IP дома |
-| Только твой IP | `"1.2.3.4/32"` | Если IP статический |
-| Корпоративная сеть | `"10.0.0.0/8"` | VPN/офис |
-| Azure Bastion | через портал | Прод без публичного SSH |
-| JIT Access | через Azure Defender | Автоматически закрывается |
+| Any (current) | `"*"` | Learning, dynamic home IP |
+| Your IP only | `"1.2.3.4/32"` | If your IP is static |
+| Corporate network | `"10.0.0.0/8"` | VPN/office |
+| Azure Bastion | via portal | Prod without public SSH |
+| JIT Access | via Azure Defender | Closes automatically |
 
-Для прода используют либо VPN + закрытый SSH, либо Azure Bastion (SSH через портал без открытого порта 22).
+For prod, either VPN + closed SSH, or Azure Bastion (SSH through the portal without opening port 22) is used.
 
 ---
 
-## 13. Откуда знать IP после `terraform apply`?
+## 13. How to Find the IP After `terraform apply`
 
-Из `outputs.tf`. После apply Terraform сам выводит:
+From `outputs.tf`. After apply, Terraform outputs it automatically:
 
 ```
 Outputs:
@@ -325,11 +325,11 @@ resource_group       = "resource-group-terraform-azure-vm-dev"
 ssh_command          = "ssh azureuser@20.50.123.45"
 ```
 
-В документации `20.50.123.45` — пример, не реальный IP. Реальный IP появляется только после создания VM. Во время `plan` поле `public_ip` пустое — Azure ещё не назначил адрес (потому что Dynamic).
+`20.50.123.45` in the documentation is an example, not a real IP. The real IP only appears after the VM is created. During `plan`, the `public_ip` field is empty — Azure has not yet assigned an address (because it's Dynamic).
 
 ---
 
-## 14. Почему `fmt -check` идёт после `init`, а не перед?
+## 14. Why Does `fmt -check` Come After `init` and Not Before?
 
 ```bash
 terraform init          # 1
@@ -337,96 +337,96 @@ terraform fmt -check    # 2
 terraform validate      # 3
 ```
 
-`fmt` технически не требует `init` — он просто проверяет форматирование текста файлов. Практическая причина порядка: в CI-пайплайне `init` делается первым шагом всегда, дальше — проверки. Это стандартный порядок, а не техническое требование.
+`fmt` technically doesn't require `init` — it simply checks the formatting of text files. The practical reason for the order: in a CI pipeline, `init` is always the first step; checks follow. This is a standard convention, not a technical requirement.
 
-`validate` же **требует** `init` — он проверяет не только синтаксис, но и правильность типов и ссылок, для чего нужны скачанные провайдеры.
-
----
-
-## 15. `tfstate` — когда обновляется?
-
-`terraform.tfstate` — файл который хранит **текущее состояние** инфраструктуры по мнению Terraform.
-
-**Обновляется при:**
-- `terraform apply` — создал/изменил ресурсы → записал новое состояние
-- `terraform destroy` — удалил ресурсы → очистил запись в state
-- `terraform import` — добавил ресурс созданный вне Terraform в state
-
-**При `plan`** — state только **читается**, не записывается. Terraform сравнивает: "что в state" vs "что хочу по коду" vs "что реально в Azure" → показывает diff.
-
-**Важно:** state не обновляется в реальном времени. Если кто-то вручную изменил ресурс в Azure Portal — Terraform об этом не знает пока не запустишь `terraform refresh` или следующий `plan`.
+`validate`, however, **requires** `init` — it checks not only syntax, but also the correctness of types and references, for which the downloaded providers are needed.
 
 ---
 
-## 16. Service Principal — что это?
+## 15. `tfstate` — When Is It Updated?
 
-**Service Principal (SP)** — "технический аккаунт" в Azure для приложений и автоматизации.
+`terraform.tfstate` — a file that stores the **current state** of the infrastructure as Terraform knows it.
 
-**Аналогия:** обычный пользователь Azure — это человек с логином и паролем. Service Principal — это "пользователь-робот" для программ, у которого нет пароля (или есть, но мы используем OIDC).
+**Updated during:**
+- `terraform apply` — created/changed resources → writes new state
+- `terraform destroy` — deleted resources → clears the entry in state
+- `terraform import` — adds a resource created outside of Terraform into state
 
-**Почему нельзя использовать личный аккаунт в CI:** GitHub Actions — это чужой сервер. Нельзя дать ему свои логин/пароль. SP решает это — он имеет только те права что ты ему дал (Contributor на подписку), и его можно отозвать в любой момент не трогая свой аккаунт.
+**During `plan`** — state is only **read**, not written. Terraform compares: "what is in state" vs "what the code wants" vs "what is actually in Azure" → shows a diff.
+
+**Important:** state is not updated in real time. If someone manually changed a resource in the Azure Portal — Terraform won't know about it until you run `terraform refresh` or the next `plan`.
+
+---
+
+## 16. Service Principal — What Is It?
+
+**Service Principal (SP)** — a "technical account" in Azure for applications and automation.
+
+**Analogy:** a regular Azure user is a person with a login and password. A Service Principal is a "robot user" for programs, which has no password (or has one, but we use OIDC).
+
+**Why you can't use a personal account in CI:** GitHub Actions runs on someone else's server. You can't give it your login/password. An SP solves this — it has only the permissions you granted it (Contributor on the subscription), and it can be revoked at any time without affecting your account.
 
 ```
-твой аккаунт     = полный доступ ко всему Azure
-Service Principal = только Contributor на одну подписку
+your account     = full access to all of Azure
+Service Principal = only Contributor on one subscription
 ```
 
 ---
 
-## 17. GitHub Actions — workflow, что это, откуда тригерится, и как работает
+## 17. GitHub Actions — Workflow, What It Is, What Triggers It, and How It Works
 
-### Что такое workflow
+### What a Workflow Is
 
-**Workflow** — это файл с инструкциями для GitHub Actions. Он живёт в репозитории по пути:
+**A workflow** is a file with instructions for GitHub Actions. It lives in the repository at the path:
 
 ```
 .github/workflows/terraform-azure-vm.yml
 ```
 
-Это обычный YAML-файл. Ты его написал сам — GitHub просто его читает и выполняет. Terraform не знает про этот файл и никак его не создаёт. Terraform — инструмент для Azure, workflow — инструмент для автоматизации CI/CD.
+This is a plain YAML file. You wrote it yourself — GitHub simply reads and executes it. Terraform doesn't know about this file and doesn't create it in any way. Terraform is a tool for Azure; the workflow is a tool for CI/CD automation.
 
-### Что внутри workflow-файла
+### What's Inside a Workflow File
 
-Файл `.github/workflows/terraform-azure-vm.yml` состоит из трёх частей:
+The file `.github/workflows/terraform-azure-vm.yml` consists of three parts:
 
-**1. Триггеры — когда запускать:**
+**1. Triggers — when to run:**
 ```yaml
 on:
-  pull_request:               # при создании PR затрагивающего infra/
+  pull_request:               # when a PR touching infra/ is created
     paths: ["infra/**", ...]
-  push:                       # при push в main затрагивающего infra/
+  push:                       # when pushing to main touching infra/
     branches: ["main"]
     paths: ["infra/**", ...]
-  workflow_dispatch:          # вручную через кнопку в GitHub UI
+  workflow_dispatch:          # manually via a button in the GitHub UI
     inputs:
       action: apply/destroy
       environment: dev/prod
 ```
 
-**2. Разрешения — что workflow может делать:**
+**2. Permissions — what the workflow can do:**
 ```yaml
 permissions:
-  id-token: write      # получать OIDC-токен для входа в Azure
-  contents: read       # читать файлы репозитория
-  pull-requests: write # писать комментарии к PR
+  id-token: write      # obtain an OIDC token for logging into Azure
+  contents: read       # read repository files
+  pull-requests: write # write comments on PRs
 ```
 
-**3. Шаги — что именно выполняется (в порядке):**
+**3. Steps — what exactly is executed (in order):**
 ```yaml
 steps:
-  - Checkout repository       # скачать код репозитория
-  - Azure Login (OIDC)        # войти в Azure без пароля
-  - Setup Terraform           # установить terraform на runner
+  - Checkout repository       # download the repository code
+  - Azure Login (OIDC)        # log into Azure without a password
+  - Setup Terraform           # install terraform on the runner
   - Terraform Format Check    # terraform fmt -check
   - Terraform Init            # terraform init
   - Terraform Validate        # terraform validate
-  - Terraform Plan            # terraform plan → сохраняет tfplan
-  - Comment Plan on PR        # если это PR — написать комментарий с результатом plan
-  - Terraform Apply           # если это push в main или workflow_dispatch apply
-  - Terraform Destroy         # если это workflow_dispatch destroy
+  - Terraform Plan            # terraform plan → saves tfplan
+  - Comment Plan on PR        # if this is a PR — post a comment with the plan result
+  - Terraform Apply           # if this is a push to main or workflow_dispatch apply
+  - Terraform Destroy         # if this is workflow_dispatch destroy
 ```
 
-### Что происходит при push в main
+### What Happens on Push to Main
 
 ```yaml
 - name: Terraform Apply
@@ -436,139 +436,139 @@ steps:
   run: terraform apply -input=false -auto-approve tfplan
 ```
 
-При push в main запускаются **все шаги**: fmt → init → validate → **plan** → **apply**. То есть push в main = автоматический деплой инфраструктуры. Поэтому в реальных проектах прямой push в main обычно запрещён — только через PR.
+On push to main, **all steps** run: fmt → init → validate → **plan** → **apply**. That means push to main = automatic infrastructure deployment. This is why in real projects, direct pushes to main are usually prohibited — only through a PR.
 
-### Что происходит при pull_request
+### What Happens on Pull Request
 
 ```yaml
 - name: Comment Plan on PR
   if: github.event_name == 'pull_request'
 ```
 
-При PR запускаются: fmt → init → validate → **plan** → **комментарий с результатом plan**. Apply не запускается. Это "безопасный просмотр" что изменится.
+On a PR, these steps run: fmt → init → validate → **plan** → **comment with the plan result**. Apply does not run. This is a "safe preview" of what will change.
 
-### Полная картина
+### The Full Picture
 
 ```
-Твой ноутбук          GitHub                GitHub Actions runner     Azure
+Your laptop          GitHub                GitHub Actions runner     Azure
 ──────────────         ──────                ────────────────────      ─────
-git push main    →    видит push      →    запускает workflow     →   terraform apply
-git push (PR)    →    видит PR        →    запускает workflow     →   terraform plan (только)
-кнопка UI        →    workflow_dispatch →  запускает workflow     →   apply или destroy
+git push main    →    sees push      →    runs workflow          →   terraform apply
+git push (PR)    →    sees PR        →    runs workflow          →   terraform plan (only)
+UI button        →    workflow_dispatch →  runs workflow          →   apply or destroy
 ```
 
-Твой ноутбук только **инициирует событие**. Сам Terraform выполняется на серверах GitHub (Ubuntu runner), не у тебя.
+Your laptop only **initiates the event**. Terraform itself runs on GitHub's servers (Ubuntu runner), not on your machine.
 
-### Как GitHub понимает что запускать в зависимости от события
+### How GitHub Knows What to Run Depending on the Event
 
-Условия `if:` в каждом шаге — вот где прописана логика:
+The `if:` conditions in each step are where the logic is defined:
 
-| Шаг | Условие `if:` | Когда выполняется |
+| Step | `if:` condition | When it runs |
 |---|---|---|
-| Comment Plan | `github.event_name == 'pull_request'` | Только при PR |
-| Apply | `github.event_name == 'push'` | При push в main |
-| Apply | `inputs.action == 'apply'` | При workflow_dispatch с action=apply |
-| Destroy | `inputs.action == 'destroy'` | При workflow_dispatch с action=destroy |
+| Comment Plan | `github.event_name == 'pull_request'` | Only on PR |
+| Apply | `github.event_name == 'push'` | On push to main |
+| Apply | `inputs.action == 'apply'` | On workflow_dispatch with action=apply |
+| Destroy | `inputs.action == 'destroy'` | On workflow_dispatch with action=destroy |
 
-Plan запускается **всегда** — при любом событии. Apply/destroy — только при нужных условиях.
+Plan runs **always** — on any event. Apply/destroy — only under the right conditions.
 
 ---
 
-## 17а. Как GitHub Actions запускает Terraform — где хранятся .tf файлы?
+## 17a. How GitHub Actions Runs Terraform — Where Are the .tf Files Stored?
 
-Ключ в первом шаге workflow:
+The key is in the first step of the workflow:
 
 ```yaml
 steps:
-  - name: Checkout repository   # ← ВОТ ГДЕ ответ
+  - name: Checkout repository   # ← THIS is the answer
     uses: actions/checkout@v4
 ```
 
-**`actions/checkout@v4` скачивает весь репозиторий на временную машину GitHub.**
+**`actions/checkout@v4` downloads the entire repository to a temporary GitHub machine.**
 
-Что происходит пошагово:
+What happens step by step:
 
 ```
-1. GitHub поднимает чистую Ubuntu-машину (runner)
-2. Checkout — копирует весь репозиторий на эту машину:
+1. GitHub spins up a clean Ubuntu machine (runner)
+2. Checkout — copies the entire repository to that machine:
    runner/
    ├── infra/
    │   ├── main.tf
    │   ├── network.tf
    │   ├── compute.tf
    │   └── ...
-3. Setup Terraform — устанавливает terraform на runner
-4. terraform init/plan/apply — выполняется ЛОКАЛЬНО на runner
-   против этих скопированных .tf файлов
-5. Terraform через Azure API создаёт ресурсы в Azure
-6. Runner выключается, все файлы удаляются
+3. Setup Terraform — installs terraform on the runner
+4. terraform init/plan/apply — runs LOCALLY on the runner
+   against these copied .tf files
+5. Terraform creates resources in Azure via the Azure API
+6. The runner shuts down, all files are deleted
 ```
 
-**Визуально:**
+**Visually:**
 ```
-GitHub repo         Runner (временная Ubuntu-машина)      Azure
-(хранит .tf)  →  checkout → terraform apply  →  создаёт VM, VNet, NIC...
+GitHub repo         Runner (temporary Ubuntu machine)      Azure
+(stores .tf)  →  checkout → terraform apply  →  creates VM, VNet, NIC...
 ```
 
-**Azure вообще не знает про Terraform.** Он просто получает API-запросы: "создай VM с такими параметрами", "создай VNet", "создай NIC" — и выполняет их. Terraform — это клиент, который эти запросы генерирует.
+**Azure doesn't know about Terraform at all.** It simply receives API requests: "create a VM with these parameters", "create a VNet", "create a NIC" — and executes them. Terraform is the client that generates those requests.
 
-`.tf` файлы хранятся в **GitHub-репозитории**. На серверах Azure их нет и никогда не было.
+`.tf` files are stored in the **GitHub repository**. They are never on Azure's servers.
 
 ---
 
-## 17в. Для чего используется Terraform — только VM и биллинг?
+## 17b. What Is Terraform Used For — Just VMs and Billing?
 
-**Нет, Terraform — это универсальный инструмент для описания любой инфраструктуры в коде (IaC).** VM — просто один из примеров.
+**No, Terraform is a universal tool for describing any infrastructure as code (IaC).** A VM is just one example.
 
-Terraform работает через провайдеры, и их сотни. Что можно описывать:
+Terraform works through providers, and there are hundreds of them. What can be described:
 
-**В Azure (azurerm):**
-- VM, контейнеры, Kubernetes кластеры (AKS)
-- Базы данных (PostgreSQL, MySQL, CosmosDB)
-- Сети, DNS, Load Balancer, VPN
+**In Azure (azurerm):**
+- VMs, containers, Kubernetes clusters (AKS)
+- Databases (PostgreSQL, MySQL, CosmosDB)
+- Networks, DNS, Load Balancer, VPN
 - Storage, Key Vault, App Service
-- Права доступа (IAM), политики
+- Access rights (IAM), policies
 
-**В других облаках:**
+**In other clouds:**
 - AWS (EC2, S3, RDS, Lambda...)
 - GCP (Compute Engine, GKE, BigQuery...)
 
-**Вне облаков:**
-- GitHub (репозитории, секреты, команды)
-- Cloudflare (DNS-записи)
-- Kubernetes (деплойменты, сервисы)
-- Базы данных (создание таблиц, пользователей)
-- Datadog, PagerDuty (мониторинг)
+**Outside of clouds:**
+- GitHub (repositories, secrets, teams)
+- Cloudflare (DNS records)
+- Kubernetes (deployments, services)
+- Databases (creating tables, users)
+- Datadog, PagerDuty (monitoring)
 
-**Главная идея:** если что-то имеет API — скорее всего есть Terraform-провайдер. Всё описывается одним языком (HCL), хранится в git, имеет plan/apply/destroy.
+**The main idea:** if something has an API — there is most likely a Terraform provider for it. Everything is described in one language (HCL), stored in git, and has plan/apply/destroy.
 
 ---
 
-## 18. Почему Azure-параметры настраиваются в репозитории GitHub?
+## 18. Why Are Azure Parameters Configured in the GitHub Repository?
 
 ```
 GitHub Secrets:
-  AZURE_CLIENT_ID       ← ID Service Principal в Azure
-  AZURE_TENANT_ID       ← ID твоего Azure tenant
-  AZURE_SUBSCRIPTION_ID ← ID подписки
+  AZURE_CLIENT_ID       ← ID of the Service Principal in Azure
+  AZURE_TENANT_ID       ← ID of your Azure tenant
+  AZURE_SUBSCRIPTION_ID ← ID of the subscription
 ```
 
-GitHub Actions workflow содержит шаги `az login` и `terraform apply`. Для их выполнения нужны credentials Azure. Эти credentials хранятся в GitHub Secrets (зашифровано) и передаются в workflow как переменные окружения.
+The GitHub Actions workflow contains `az login` and `terraform apply` steps. To execute them, Azure credentials are needed. These credentials are stored in GitHub Secrets (encrypted) and passed into the workflow as environment variables.
 
-**Альтернатива** хранить их прямо в workflow-файле — никогда, это небезопасно (файл публичный).
+**The alternative** — storing them directly in the workflow file — is never acceptable, as the file is public.
 
-**Связь:** в Azure настраивается "доверяй токенам от этого GitHub репозитория" (Federated Credential). В GitHub хранится ID приложения (не пароль). При запуске GitHub генерирует токен → Azure его принимает → доступ есть.
+**The connection:** Azure is configured to "trust tokens from this GitHub repository" (Federated Credential). GitHub stores the application ID (not a password). When the workflow runs, GitHub generates a token → Azure accepts it → access is granted.
 
 ---
 
-## 19. Pull Request — как он запускает Terraform plan?
+## 19. Pull Request — How Does It Trigger Terraform Plan?
 
-**PR можно создать двумя способами:**
-1. Через GitHub интерфейс: кнопка "New pull request" на github.com
-2. Через `gh` CLI: `gh pr create --base main` из терминала
-3. Через `git push` + GitHub предлагает создать PR
+**A PR can be created in two ways:**
+1. Through the GitHub interface: the "New pull request" button on github.com
+2. Through the `gh` CLI: `gh pr create --base main` from the terminal
+3. Through `git push` + GitHub offers to create a PR
 
-**Как Terraform plan запускается автоматически:**
+**How Terraform plan is triggered automatically:**
 
 ```yaml
 # .github/workflows/terraform-azure-vm.yml
@@ -578,31 +578,31 @@ on:
       - 'infra/**'
 ```
 
-Когда создаётся PR затрагивающий файлы в `infra/` → GitHub видит событие `pull_request` → запускает workflow → workflow запускает `terraform plan` → результат публикуется как комментарий к PR.
+When a PR touching files in `infra/` is created → GitHub sees a `pull_request` event → runs the workflow → the workflow runs `terraform plan` → the result is posted as a comment on the PR.
 
-**Важно:** Terraform запускается на серверах GitHub, а не локально. Твой локальный Terraform здесь не при чём.
+**Important:** Terraform runs on GitHub's servers, not locally. Your local Terraform is not involved.
 
 ---
 
-## 20. Варианты запуска Terraform не локально
+## 20. Options for Running Terraform Non-Locally
 
-Пункт 10 в setup-tutorial.md — "Локальный запуск (опционально)" — основной способ это GitHub Actions.
+Section 10 in setup-tutorial.md — "Local run (optional)" — the primary method is GitHub Actions.
 
-| Где запускается | Как |
+| Where it runs | How |
 |---|---|
-| GitHub Actions (основной) | push / PR / workflow_dispatch |
-| Локально (опционально) | `terraform apply` из терминала |
-| Azure DevOps Pipelines | альтернатива GitHub Actions |
-| Terraform Cloud | SaaS от HashiCorp, хранит state в облаке |
-| GitLab CI | если используешь GitLab |
+| GitHub Actions (primary) | push / PR / workflow_dispatch |
+| Locally (optional) | `terraform apply` from the terminal |
+| Azure DevOps Pipelines | alternative to GitHub Actions |
+| Terraform Cloud | SaaS from HashiCorp, stores state in the cloud |
+| GitLab CI | if you use GitLab |
 
-В нашем проекте основной способ — GitHub Actions. Локальный запуск — только для отладки, когда не хочешь делать push ради каждой проверки.
+In our project, the primary method is GitHub Actions. Local runs are only for debugging, when you don't want to push just to run a check.
 
 ---
 
-## 21. `outputs.tf` — для чего, как работает
+## 21. `outputs.tf` — What It's For and How It Works
 
-`outputs.tf` — это **отдельный файл**, не часть `apply`. Terraform не выполняет его как команду — он просто описывает что показать после apply.
+`outputs.tf` is a **separate file**, not part of `apply`. Terraform doesn't execute it as a command — it simply describes what to show after apply.
 
 ```hcl
 # outputs.tf
@@ -615,9 +615,9 @@ output "ssh_command" {
 }
 ```
 
-**Как работает — три момента:**
+**How it works — three points:**
 
-**1. После `terraform apply`** Terraform автоматически читает все `output` блоки и выводит в терминал:
+**1. After `terraform apply`** Terraform automatically reads all `output` blocks and prints them to the terminal:
 ```
 Outputs:
 
@@ -626,20 +626,20 @@ virtual_machine_name = "linux-vm-main"
 resource_group       = "resource-group-terraform-azure-vm-dev"
 ssh_command          = "ssh azureuser@20.50.123.45"
 ```
-Никакой отдельной команды запускать не нужно — это происходит само.
+No separate command is needed — this happens automatically.
 
-**2. Значения берутся из реальных созданных ресурсов** — не из переменных и не из tfvars. `azurerm_public_ip.public_ip.ip_address` — это атрибут уже созданного ресурса, который Azure вернул после создания. Поэтому во время `plan` это поле пустое (ресурс ещё не создан).
+**2. Values are taken from the real created resources** — not from variables or tfvars. `azurerm_public_ip.public_ip.ip_address` is an attribute of an already-created resource that Azure returned after creation. That is why this field is empty during `plan` (the resource hasn't been created yet).
 
-**3. Сохраняются в tfstate** — можно получить позже без повторного apply:
+**3. Saved in tfstate** — can be retrieved later without running apply again:
 ```bash
-# Показать все outputs
+# Show all outputs
 terraform output
 
-# Получить конкретный (удобно в скриптах)
+# Get a specific one (useful in scripts)
 terraform output -raw public_ip
 # → 20.50.123.45
 ```
 
-**В GitHub Actions** workflow выводит эти значения в логи после apply — видишь готовую строку `ssh_command` прямо в интерфейсе GitHub.
+**In GitHub Actions**, the workflow prints these values in the logs after apply — you see the ready-to-use `ssh_command` string directly in the GitHub interface.
 
-**Можно ли обойтись без outputs.tf?** Да. Инфраструктура создастся без него. Outputs — это удобство, не требование. Но без них придётся вручную искать IP в Azure Portal.
+**Can you do without outputs.tf?** Yes. The infrastructure will be created without it. Outputs are a convenience, not a requirement. But without them you'll have to manually look up the IP in the Azure Portal.

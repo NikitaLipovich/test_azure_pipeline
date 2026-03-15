@@ -1,76 +1,76 @@
 # Setup Tutorial: Terraform + Azure VM via GitHub Actions (OIDC)
 
-Это пошаговое руководство по настройке окружения для запуска Terraform-пайплайна,
-который разворачивает Linux VM в Azure через GitHub Actions с авторизацией по OIDC
-(без хранения секретов/паролей).
+This is a step-by-step guide for setting up the environment to run a Terraform pipeline
+that deploys a Linux VM in Azure via GitHub Actions with OIDC authorization
+(no secrets/passwords stored).
 
 ---
 
-## Содержание
+## Table of Contents
 
-1. [Что нужно установить](#1-что-нужно-установить)
-2. [Подготовка Azure](#2-подготовка-azure)
-3. [Настройка OIDC — Federated Credential](#3-настройка-oidc--federated-credential)
-4. [Генерация SSH-ключа](#4-генерация-ssh-ключа)
-5. [Настройка GitHub репозитория](#5-настройка-github-репозитория)
-6. [Настройка GitHub Environment с Required Reviewers](#6-настройка-github-environment-с-required-reviewers)
-7. [Первый запуск пайплайна](#7-первый-запуск-пайплайна)
-8. [Подключение к VM по SSH](#8-подключение-к-vm-по-ssh)
-9. [Уничтожение инфраструктуры](#9-уничтожение-инфраструктуры)
-10. [Локальный запуск Terraform (опционально)](#10-локальный-запуск-terraform-опционально)
+1. [What to Install](#1-what-to-install)
+2. [Azure Preparation](#2-azure-preparation)
+3. [OIDC Setup — Federated Credential](#3-oidc-setup--federated-credential)
+4. [SSH Key Generation](#4-ssh-key-generation)
+5. [GitHub Repository Setup](#5-github-repository-setup)
+6. [GitHub Environment with Required Reviewers](#6-github-environment-with-required-reviewers)
+7. [First Pipeline Run](#7-first-pipeline-run)
+8. [Connecting to VM via SSH](#8-connecting-to-vm-via-ssh)
+9. [Destroying the Infrastructure](#9-destroying-the-infrastructure)
+10. [Running Terraform Locally (optional)](#10-running-terraform-locally-optional)
 
 ---
 
-## 1. Что нужно установить
+## 1. What to Install
 
-### Обязательно (локально)
+### Required (locally)
 
-| Инструмент | Версия | Назначение |
+| Tool | Version | Purpose |
 |---|---|---|
-| [Terraform](https://developer.hashicorp.com/terraform/install) | >= 1.6.0 | IaC — описание инфраструктуры |
-| [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) | последняя | Создание Service Principal, OIDC |
-| [Git](https://git-scm.com/downloads) | последняя | Работа с репозиторием |
-| SSH (встроен в Windows 11) | — | Генерация ключей и подключение к VM |
+| [Terraform](https://developer.hashicorp.com/terraform/install) | >= 1.6.0 | IaC — infrastructure description |
+| [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) | latest | Creating Service Principal, OIDC |
+| [Git](https://git-scm.com/downloads) | latest | Working with the repository |
+| SSH (built into Windows 11) | — | Key generation and VM connection |
 
-### Проверка установки
+### Verifying the Installation
 
 ```bash
 terraform -version   # >= 1.6.0
-az version           # любая актуальная
+az version           # any current version
 git --version
 ssh -V
 ```
 
 ---
 
-## 2. Подготовка Azure
+## 2. Azure Preparation
 
-### 2.1. Войти в Azure CLI
+### 2.1. Log in to Azure CLI
 
 ```bash
 az login
 ```
 
-Откроется браузер — войдите в свой аккаунт Microsoft/Azure.
+A browser will open — log in to your Microsoft/Azure account.
 
-### 2.2. Выбрать подписку
+### 2.2. Select a Subscription
 
 ```bash
-# Посмотреть все доступные подписки
+# View all available subscriptions
 az account list --output table
 
-# Установить нужную (замените <SUBSCRIPTION_ID>)
+# Set the desired one (replace <SUBSCRIPTION_ID>)
 az account set --subscription "<SUBSCRIPTION_ID>"
 
-# Убедиться что выбрана правильная
+# Verify the correct one is selected
 az account show --output table
 ```
 
-Запишите значения — они понадобятся позже:
-- `id` — это `AZURE_SUBSCRIPTION_ID`
-- `tenantId` — это `AZURE_TENANT_ID`
+Save these values — you will need them later:
+- `id` — this is `AZURE_SUBSCRIPTION_ID`
+- `tenantId` — this is `AZURE_TENANT_ID`
 
-### 2.3. Создать Service Principal (App Registration)
+### 2.3. Create a Service Principal (App Registration)
 
 ```bash
 az ad sp create-for-rbac \
@@ -80,20 +80,20 @@ az ad sp create-for-rbac \
   --sdk-auth false
 ```
 
-Из вывода запишите:
-- `appId` — это `AZURE_CLIENT_ID`
+From the output, save:
+- `appId` — this is `AZURE_CLIENT_ID`
 
-> **Важно:** флаг `--sdk-auth false` намеренно. Мы используем OIDC,
-> поэтому `clientSecret` нам не нужен.
+> **Important:** the `--sdk-auth false` flag is intentional. We use OIDC,
+> so `clientSecret` is not needed.
 
 ---
 
-## 3. Настройка OIDC — Federated Credential
+## 3. OIDC Setup — Federated Credential
 
-OIDC позволяет GitHub Actions авторизоваться в Azure **без client secret**.
-Вместо этого Azure доверяет токенам, которые GitHub генерирует для конкретного репозитория.
+OIDC allows GitHub Actions to authenticate in Azure **without a client secret**.
+Instead, Azure trusts tokens that GitHub generates for a specific repository.
 
-### 3.1. Добавить Federated Credential для push в main
+### 3.1. Add a Federated Credential for push to main
 
 ```bash
 az ad app federated-credential create \
@@ -106,7 +106,7 @@ az ad app federated-credential create \
   }'
 ```
 
-### 3.2. Добавить Federated Credential для pull_request
+### 3.2. Add a Federated Credential for pull_request
 
 ```bash
 az ad app federated-credential create \
@@ -119,9 +119,9 @@ az ad app federated-credential create \
   }'
 ```
 
-### 3.3. Добавить Federated Credential для Environment (workflow_dispatch)
+### 3.3. Add a Federated Credential for Environment (workflow_dispatch)
 
-Workflow использует GitHub Environment `azure-prod`. Для него нужен отдельный credential:
+The workflow uses the GitHub Environment `azure-prod`. A separate credential is required for it:
 
 ```bash
 az ad app federated-credential create \
@@ -134,86 +134,88 @@ az ad app federated-credential create \
   }'
 ```
 
-> Замените `<GITHUB_USERNAME>/<REPO_NAME>` на реальные значения, например:
+> Replace `<GITHUB_USERNAME>/<REPO_NAME>` with the real values, for example:
 > `myuser/my-infra-repo`
 
-### 3.4. Проверить список Federated Credentials
+### 3.4. Verify the List of Federated Credentials
 
 ```bash
 az ad app federated-credential list --id "<AZURE_CLIENT_ID>" --output table
 ```
 
-Должно быть 3 записи.
+There should be 3 entries.
 
 ---
 
-## 4. Генерация SSH-ключа
+## 4. SSH Key Generation
 
-VM создаётся с отключённой парольной аутентификацией. Доступ только по SSH-ключу.
-
-```bash
-# Генерация ключа ed25519 (рекомендуется)
-ssh-keygen -t ed25519 -C "azure-vm-terraform" -f ~/.ssh/azure_vm_key
-```
-
-Будет создано два файла:
-- `~/.ssh/azure_vm_key` — приватный ключ (никому не передавать)
-- `~/.ssh/azure_vm_key.pub` — публичный ключ (загружается в GitHub Secrets)
+The VM is created with password authentication disabled. Access is via SSH key only.
 
 ```bash
-# Посмотреть содержимое публичного ключа
-cat ~/.ssh/azure_vm_key.pub
+# Generate an RSA 4096 key (Azure does not support ed25519)
+ssh-keygen -t rsa -b 4096 -C "azure-vm-terraform" -f ~/.ssh/azure_vm_key_rsa
 ```
 
-Скопируйте вывод — он понадобится в следующем шаге.
+Two files will be created:
+- `~/.ssh/azure_vm_key_rsa` — private key (never share with anyone)
+- `~/.ssh/azure_vm_key_rsa.pub` — public key (uploaded to GitHub Secrets)
+
+> **Important:** Azure only supports RSA keys. `ed25519` keys will cause an error during `terraform apply`.
+
+```bash
+# View the contents of the public key
+cat ~/.ssh/azure_vm_key_rsa.pub
+```
+
+Copy the output — you will need it in the next step.
 
 ---
 
-## 5. Настройка GitHub репозитория
+## 5. GitHub Repository Setup
 
-### 5.1. Перейти в Settings > Secrets and variables > Actions
+### 5.1. Go to Settings > Secrets and variables > Actions
 
-Путь: `https://github.com/<GITHUB_USERNAME>/<REPO_NAME>/settings/secrets/actions`
+Path: `https://github.com/<GITHUB_USERNAME>/<REPO_NAME>/settings/secrets/actions`
 
-### 5.2. Добавить Repository Secrets
+### 5.2. Add Repository Secrets
 
-Нажать **New repository secret** для каждого:
+Click **New repository secret** for each one:
 
-| Secret Name | Значение |
+| Secret Name | Value |
 |---|---|
-| `AZURE_CLIENT_ID` | `appId` из шага 2.3 |
-| `AZURE_TENANT_ID` | `tenantId` из шага 2.2 |
-| `AZURE_SUBSCRIPTION_ID` | `id` из шага 2.2 |
-| `SSH_PUBLIC_KEY` | содержимое `~/.ssh/azure_vm_key.pub` |
+| `AZURE_CLIENT_ID` | `appId` from step 2.3 |
+| `AZURE_TENANT_ID` | `tenantId` from step 2.2 |
+| `AZURE_SUBSCRIPTION_ID` | `id` from step 2.2 |
+| `SSH_PUBLIC_KEY` | contents of `~/.ssh/azure_vm_key_rsa.pub` |
 
-> Итого 4 секрета. Никаких паролей и client secret не нужно.
-
----
-
-## 6. Настройка GitHub Environment с Required Reviewers
-
-Workflow привязан к Environment `azure-prod`. Это предотвращает случайный apply без подтверждения.
-
-### 6.1. Создать Environment
-
-1. Перейти в **Settings > Environments**
-2. Нажать **New environment**
-3. Имя: `azure-prod`
-4. Нажать **Configure environment**
-
-### 6.2. Включить Required Reviewers
-
-1. В блоке **Deployment protection rules** включить **Required reviewers**
-2. Добавить себя (или нужного человека) как reviewer
-3. Нажать **Save protection rules**
-
-Теперь при каждом apply/destroy через workflow_dispatch — потребуется ручное подтверждение.
+> 4 secrets total. No passwords or client secrets needed.
 
 ---
 
-## 7. Первый запуск пайплайна
+## 6. GitHub Environment with Required Reviewers
 
-### 7.1. Через push в main (автоматический apply)
+The workflow is tied to the `azure-prod` Environment. This prevents accidental apply without confirmation.
+
+### 6.1. Create an Environment
+
+1. Go to **Settings > Environments**
+2. Click **New environment**
+3. Name: `azure-prod`
+4. Click **Configure environment**
+
+### 6.2. Enable Required Reviewers
+
+1. In the **Deployment protection rules** block, enable **Required reviewers**
+2. Add yourself (or the appropriate person) as a reviewer
+3. Click **Save protection rules**
+
+Now every apply/destroy via workflow_dispatch will require manual confirmation.
+
+---
+
+## 7. First Pipeline Run
+
+### 7.1. Via push to main (automatic apply)
 
 ```bash
 git add .
@@ -221,68 +223,68 @@ git commit -m "feat: initial terraform infrastructure"
 git push origin main
 ```
 
-Workflow запустится автоматически на push в `main` с action `apply` и environment `dev`.
+The workflow will start automatically on push to `main` with action `apply` and environment `dev`.
 
-### 7.2. Через workflow_dispatch (ручной запуск)
+### 7.2. Via workflow_dispatch (manual run)
 
-1. Перейти в **Actions** > **terraform-azure-vm**
-2. Нажать **Run workflow**
-3. Выбрать параметры:
-   - **action**: `apply` или `destroy`
-   - **environment**: `dev` или `prod`
-   - **location** (опционально): например, `eastus` если B1s недоступен в вашем регионе
-   - **virtual_machine_size** (опционально): например, `Standard_B1ls` если `Standard_B1s` недоступен
-4. Нажать **Run workflow**
-5. Подтвердить деплой в блоке **Review deployments** (т.к. включены Required Reviewers)
+1. Go to **Actions** > **terraform-azure-vm**
+2. Click **Run workflow**
+3. Select parameters:
+   - **action**: `apply` or `destroy`
+   - **environment**: `dev` or `prod`
+   - **location** (optional): e.g., `eastus` if B1s is unavailable in your region
+   - **virtual_machine_size** (optional): e.g., `Standard_B1ls` if `Standard_B1s` is unavailable
+4. Click **Run workflow**
+5. Confirm the deployment in the **Review deployments** block (because Required Reviewers is enabled)
 
-### 7.3. Через Pull Request (только plan)
+### 7.3. Via Pull Request (plan only)
 
-При создании PR, изменяющего файлы в `infra/` или `.github/workflows/terraform-azure-vm.yml`,
-автоматически запускается `terraform plan`. Результат публикуется в комментарии к PR.
+When a PR is created that changes files in `infra/` or `.github/workflows/terraform-azure-vm.yml`,
+`terraform plan` is automatically triggered. The result is posted as a comment on the PR.
 
 ---
 
-## 8. Подключение к VM по SSH
+## 8. Connecting to VM via SSH
 
-После успешного apply найдите IP-адрес в выводе workflow:
+After a successful apply, find the IP address in the workflow output:
 
-В шаге **Terraform Apply** в разделе **Outputs** будет строка:
+In the **Terraform Apply** step under **Outputs** there will be a line:
 ```
 ssh_command = "ssh azureuser@<PUBLIC_IP>"
 ```
 
-Подключиться:
+Connect:
 ```bash
-ssh -i ~/.ssh/azure_vm_key azureuser@<PUBLIC_IP>
+ssh -i ~/.ssh/azure_vm_key_rsa azureuser@<PUBLIC_IP>
 ```
 
 ---
 
-## 9. Уничтожение инфраструктуры
+## 9. Destroying the Infrastructure
 
-Через **workflow_dispatch**:
+Via **workflow_dispatch**:
 1. **action**: `destroy`
-2. **environment**: нужное окружение
-3. Подтвердить в **Review deployments**
+2. **environment**: the desired environment
+3. Confirm in **Review deployments**
 
-Или локально (см. раздел 10).
+Or locally (see section 10).
 
-> **Внимание:** после destroy все данные VM будут безвозвратно удалены.
+> **Warning:** after destroy, all VM data will be permanently deleted.
 
 ---
 
-## 10. Локальный запуск Terraform (опционально)
+## 10. Running Terraform Locally (optional)
 
-Для отладки можно запускать Terraform локально.
+For debugging, Terraform can be run locally.
 
-### 10.1. Авторизоваться в Azure CLI
+### 10.1. Log in to Azure CLI
 
 ```bash
 az login
 az account set --subscription "<SUBSCRIPTION_ID>"
 ```
 
-### 10.2. Передать SSH-ключ через переменную окружения
+### 10.2. Pass the SSH Key via Environment Variable
 
 ```bash
 # Linux/macOS
@@ -292,7 +294,7 @@ export TF_VAR_ssh_public_key="$(cat ~/.ssh/azure_vm_key.pub)"
 $env:TF_VAR_ssh_public_key = Get-Content ~/.ssh/azure_vm_key.pub -Raw
 ```
 
-### 10.3. Запустить Terraform
+### 10.3. Run Terraform
 
 ```bash
 cd infra
@@ -301,7 +303,7 @@ terraform init
 terraform validate
 terraform fmt -check -recursive
 
-# Plan для dev окружения
+# Plan for the dev environment
 terraform plan -var-file=vars/dev.tfvars
 
 # Apply
@@ -313,24 +315,24 @@ terraform destroy -var-file=vars/dev.tfvars
 
 ---
 
-## Краткий чеклист
+## Quick Checklist
 
-- [ ] Установлены: Terraform >= 1.6.0, Azure CLI, Git, SSH
-- [ ] Выполнен `az login`, выбрана правильная подписка
-- [ ] Создан Service Principal, записан `AZURE_CLIENT_ID`
-- [ ] Добавлено 3 Federated Credential (push/main, pull_request, environment/azure-prod)
-- [ ] Сгенерирован SSH-ключ `~/.ssh/azure_vm_key`
-- [ ] В GitHub добавлено 4 Repository Secrets
-- [ ] Создан GitHub Environment `azure-prod` с Required Reviewers
-- [ ] Выполнен первый push / workflow_dispatch
-- [ ] Workflow прошёл успешно, VM запущена
-- [ ] Проверено подключение по SSH
+- [ ] Installed: Terraform >= 1.6.0, Azure CLI, Git, SSH
+- [ ] Ran `az login`, selected the correct subscription
+- [ ] Created a Service Principal, saved `AZURE_CLIENT_ID`
+- [ ] Added 3 Federated Credentials (push/main, pull_request, environment/azure-prod)
+- [ ] Generated SSH key `~/.ssh/azure_vm_key`
+- [ ] Added 4 Repository Secrets to GitHub
+- [ ] Created GitHub Environment `azure-prod` with Required Reviewers
+- [ ] Performed first push / workflow_dispatch
+- [ ] Workflow completed successfully, VM is running
+- [ ] Verified SSH connection
 
 ---
 
-## Справка по переменным
+## Variable Reference
 
-| Переменная | Где взять | Пример |
+| Variable | Where to find it | Example |
 |---|---|---|
 | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |

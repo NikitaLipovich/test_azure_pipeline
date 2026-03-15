@@ -8,3 +8,4 @@ PS C:\Users\Admin> az account show --output table
 EnvironmentName    HomeTenantId                          IsDefault    Name                  State    TenantDefaultDomain                   TenantDisplayName     TenantId
 -----------------  ------------------------------------  -----------  --------------------  -------  ------------------------------------  --------------------  ------------------------------------
 AzureCloud         b982394e-41b5-447c-8a7a-40b5ad725bba  True         Azure subscription 1  Enabled  nikita1lipovichgmail.onmicrosoft.com  Каталог по умолчанию  b982394e-41b5-447c-8a7a-40b5ad725bba
+

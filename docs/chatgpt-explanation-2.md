@@ -1,201 +1,201 @@
-Отвечу по пунктам (и **поправлю терминологию**): в Azure “free tier” — это **VM**, а не “container”. Контейнеры — это ACI/AKS, и это другое задание. У тебя задача: **VM через Terraform + GitHub Actions**.
+Let me answer point by point (and **correct the terminology**): in Azure "free tier" refers to a **VM**, not a "container". Containers are ACI/AKS, and that's a different assignment. Your task is: **a VM via Terraform + GitHub Actions**.
 
-Ниже:
+Below:
 
-1. ответы на все вопросы 1–17,
-2. план разбиения задачи и минимальной проверки (для п.7),
-3. “не capacity guarantee” простыми словами,
-4. что такое `vm_size` и зачем он.
+1. answers to all questions 1–17,
+2. a plan for splitting the task and minimal verification (for point 7),
+3. "not a capacity guarantee" in plain words,
+4. what `vm_size` is and why it exists.
 
-В конце дам **ссылки на доки** (я положу их в code block, чтобы интерфейс корректно их показывал).
+At the end I'll give **links to the docs** (I'll put them in a code block so the interface displays them correctly).
 
 ---
 
-## 1) “type of container?” — это не контейнер
+## 1) "type of container?" — this is not a container
 
-Это **Virtual Machine** (Linux VM). “Free tier B1s” — это **размер VM** (SKU), например `Standard_B1s`.
+This is a **Virtual Machine** (Linux VM). "Free tier B1s" is a **VM size** (SKU), for example `Standard_B1s`.
 
 ---
 
 ## 2) Workflow: fmt/validate/plan, merge → apply
 
-Тут логика такая:
+The logic here is:
 
-* На **Pull Request**: запускаем проверки и **`terraform plan`** (чтобы увидеть, что будет создано/изменено).
-* На **merge в main**: запускаем **`terraform apply`** (то есть реально создаём ресурсы).
+* On a **Pull Request**: run checks and **`terraform plan`** (to see what will be created/changed).
+* On **merge to main**: run **`terraform apply`** (i.e., actually create the resources).
 
-Технически это делается триггерами GitHub Actions:
+Technically this is done with GitHub Actions triggers:
 
 * `on: pull_request` → fmt/validate/plan
 * `on: push` (branches: main) → apply
-  Это стандартный паттерн для IaC. GitHub про “events” пишет здесь ([GitHub Docs][1]).
+  This is the standard pattern for IaC. GitHub writes about "events" here ([GitHub Docs][1]).
 
 ---
 
-## 3) Что такое “SG network”? Что такое tags?
+## 3) What is "SG network"? What are tags?
 
 ### SG network
 
-В AWS “Security Group”. В Azure аналог называется **NSG (Network Security Group)**.
+In AWS: "Security Group". In Azure the equivalent is called an **NSG (Network Security Group)**.
 
-* **VNet** = виртуальная сеть (как “виртуальный роутер/сеть”)
-* **Subnet** = подсеть внутри VNet
-* **NSG** = правила firewall на вход/выход (например разрешить SSH 22)
+* **VNet** = a virtual network (like a "virtual router/network")
+* **Subnet** = a sub-network inside a VNet
+* **NSG** = inbound/outbound firewall rules (e.g., allow SSH on port 22)
 
-В моём Terraform:
+In my Terraform:
 
 * `azurerm_virtual_network` — VNet
 * `azurerm_subnet` — subnet
 * `azurerm_network_security_group` — NSG
-* `azurerm_network_interface_security_group_association` — “привязать NSG к NIC”
+* `azurerm_network_interface_security_group_association` — "attach NSG to NIC"
 
 ### Tags
 
-**Tags** = метки “ключ=значение” на Azure ресурсах (например `project=...`, `owner=...`).
-Зачем:
+**Tags** = "key=value" labels on Azure resources (e.g., `project=...`, `owner=...`).
+Why:
 
-* фильтрация в портале,
-* отчёты по затратам (cost),
-* политики (Azure Policy),
-* автоматизация (например выключать всё с tag=dev).
-
----
-
-## 4) Auto shutdown — “когда событие случилось?”
-
-Auto shutdown тут **не по событию**, а **по расписанию** (например каждый день в 22:00).
-Это нужно, чтобы VM не работала ночью и не жгла бюджет/квоты.
+* filtering in the portal,
+* cost reports,
+* policies (Azure Policy),
+* automation (e.g., shut down everything with tag=dev).
 
 ---
 
-## 5) Auth GitHub → Azure (OIDC) и “в какой последовательности”
+## 4) Auto shutdown — "when which event happened?"
 
-OIDC = способ дать GitHub Actions временный токен в Azure **без пароля и без client secret**.
+Auto shutdown here is **not event-based**, it is **schedule-based** (for example, every day at 22:00).
+This is needed so the VM doesn't run at night and burn through the budget/quotas.
 
-Последовательность действий:
+---
 
-1. **В Azure**: создать App Registration (Microsoft Entra ID).
-2. Создать **Federated credential** (доверие к GitHub repo/branch/environment).
-3. Дать этой app права (роль) на subscription или resource group (обычно **Contributor** на RG).
-4. **В GitHub repo**: добавить secrets **не-парольные**:
+## 5) Auth GitHub → Azure (OIDC) and "in which sequence"
+
+OIDC = a way to give GitHub Actions a temporary token in Azure **without a password and without a client secret**.
+
+Sequence of steps:
+
+1. **In Azure**: create an App Registration (Microsoft Entra ID).
+2. Create a **Federated credential** (trust for the GitHub repo/branch/environment).
+3. Grant that app permissions (a role) on the subscription or resource group (usually **Contributor** on the RG).
+4. **In the GitHub repo**: add non-password secrets:
 
    * `AZURE_CLIENT_ID`
    * `AZURE_TENANT_ID`
    * `AZURE_SUBSCRIPTION_ID`
-     (это просто идентификаторы, не секрет-пароль)
-5. В workflow добавить шаг `azure/login@v2` с этими id.
+     (these are just identifiers, not secret-passwords)
+5. In the workflow, add an `azure/login@v2` step with these IDs.
 
-Документация прямо по этому сценарию: GitHub guide ([GitHub Docs][2]) и Microsoft Learn ([Microsoft Learn][3]). Также у `azure/login` есть README ([GitHub][4]).
+Documentation for exactly this scenario: GitHub guide ([GitHub Docs][2]) and Microsoft Learn ([Microsoft Learn][3]). Also the `azure/login` README ([GitHub][4]).
 
-**Где “manual accept”?**
-Manual approval чаще делают через **GitHub Environments**:
+**Where is "manual accept"?**
+Manual approval is usually done via **GitHub Environments**:
 
-* job имеет `environment: azure-prod`
-* в настройках environment ставишь “Required reviewers”
-  Тогда **apply job** остановится и будет ждать одобрения в UI GitHub. Это отдельная “ступень безопасности”, не в Azure.
-
----
-
-## 6) Зачем “ручной terraform destroy” для экономии
-
-Terraform создаёт ресурсы. Если ты создал VM и забыл — она продолжает жить (и может стоить деньги/съедать лимиты).
-
-**`terraform destroy`** удаляет всё, что Terraform создал (что записано в state).
-Почему “ручной”:
-
-* чтобы случайно не снести прод,
-* чтобы ты контролировал момент удаления,
-* в учебном задании удобно: “создал → проверил → удалил”.
+* a job has `environment: azure-prod`
+* in the environment settings you set "Required reviewers"
+  Then the **apply job** will stop and wait for approval in the GitHub UI. This is a separate "security gate", not in Azure.
 
 ---
 
-## 7) “fallback by size and length” — это не про контейнер, и не про длину
+## 6) Why "Manual terraform destroy" to Save Money
 
-Тут я криво выразился: речь про **fallback по VM size и region**.
+Terraform creates resources. If you created a VM and forgot about it — it keeps running (and may cost money/consume limits).
 
-* **size** = тип/мощность VM (`Standard_B1s`, `Standard_B1ls`, …)
-* **region** = где создаём (`eastus`, `northeurope`, …)
+**`terraform destroy`** deletes everything Terraform created (as recorded in state).
+Why "manual":
 
-Если Azure отвечает `SkuNotAvailable`, значит **в этом регионе сейчас нет capacity/доступности для этого размера** — тогда пробуем другой регион или другой размер.
-
-Никакой “длины” контейнера тут нет.
-
----
-
-## 8) “проверка и обработка” — о чём это
-
-О том, что DevOps-подход — не просто “ну упало и ладно”, а:
-
-* документируешь причину (`SkuNotAvailable`),
-* добавляешь возможность менять `location` и `vm_size` **без правки кода** (например через inputs в workflow_dispatch),
-* добавляешь список “рекомендованных регионов/размеров” в README.
-
-Это выглядит как “инженерная обработка edge-case”.
+* so you don't accidentally tear down prod,
+* so you control the moment of deletion,
+* in a learning assignment it's convenient: "created → verified → deleted".
 
 ---
 
-## 9) Чем Spot отличается от free tier
+## 7) "fallback by size and length" — this is not about containers, and not about length
 
-* **Free tier**: про **скидку/кредит** (например “750 часов B1s” может быть бесплатно).
-* **Spot VM**: про то, что Azure может **в любой момент забрать VM обратно**, если ресурсы понадобились другим (VM “preemptible”). Обычно дешевле, но менее надёжно.
+I phrased that poorly: it's about **fallback by VM size and region**.
 
-Spot решает иногда проблему цены/иногда capacity, но добавляет риск “VM отключат”.
+* **size** = the type/power of the VM (`Standard_B1s`, `Standard_B1ls`, …)
+* **region** = where we're creating it (`eastus`, `northeurope`, …)
 
----
+If Azure responds with `SkuNotAvailable`, it means **there is no capacity/availability for this size in this region right now** — then try a different region or a different size.
 
-## 10) Auto shutdown “по какому событию”
-
-Ещё раз: **по расписанию**, не по событию.
-Событие могло бы быть “push в repo” или “ночь наступила”, но в Azure shutdown schedule — это именно **daily recurrence**.
+There is no "container length" here.
 
 ---
 
-## 11) Почему workflow лежит в `.github/workflows/*.yml` и при чём тут Terraform
+## 8) "check and handling" — what this is about
 
-GitHub Actions устроен так: workflow — это YAML файл в `.github/workflows/`. GitHub читает его и запускает jobs/steps на runner.
+It's about the fact that the DevOps approach is not just "well, it failed, whatever", but:
 
-Terraform тут просто команда, которую runner выполняет (`terraform init/plan/apply`).
-Документация про workflows: ([GitHub Docs][5]).
+* documenting the cause (`SkuNotAvailable`),
+* adding the ability to change `location` and `vm_size` **without editing code** (for example via inputs in workflow_dispatch),
+* adding a list of "recommended regions/sizes" to the README.
+
+This looks like "engineering handling of an edge case".
 
 ---
 
-## 12) Документация по OIDC
+## 9) How Spot Differs from Free Tier
 
-* GitHub: OIDC для Azure ([GitHub Docs][2])
-* Microsoft Learn: Azure Login action с OIDC ([Microsoft Learn][3])
+* **Free tier**: about a **discount/credit** (e.g., "750 hours of B1s" may be free).
+* **Spot VM**: about the fact that Azure can **reclaim the VM at any moment** if resources are needed by others (the VM is "preemptible"). Usually cheaper, but less reliable.
+
+Spot sometimes solves the price/capacity problem, but adds the risk of "the VM being shut down".
+
+---
+
+## 10) Auto Shutdown — "by which event"
+
+Again: **by schedule**, not by an event.
+An event could be "push to repo" or "night has fallen", but in Azure the shutdown schedule is specifically a **daily recurrence**.
+
+---
+
+## 11) Why the Workflow Lives in `.github/workflows/*.yml` and What Terraform Has to Do with It
+
+GitHub Actions works like this: a workflow is a YAML file in `.github/workflows/`. GitHub reads it and runs jobs/steps on a runner.
+
+Terraform here is simply a command that the runner executes (`terraform init/plan/apply`).
+Documentation on workflows: ([GitHub Docs][5]).
+
+---
+
+## 12) Documentation on OIDC
+
+* GitHub: OIDC for Azure ([GitHub Docs][2])
+* Microsoft Learn: Azure Login action with OIDC ([Microsoft Learn][3])
 * `azure/login` README ([GitHub][4])
 
 ---
 
-## 13) “plan на PR” — что это
+## 13) "plan on PR" — What Is This
 
-Это настройка “запускать `terraform plan` на событие pull_request”.
+This is the setting "run `terraform plan` on the pull_request event".
 
-Зачем:
+Why:
 
-* видеть изменения до мерджа,
-* поймать ошибки до apply,
-* это как “preview инфраструктуры”.
-
----
-
-## 14) “apply” — что это и как настраивается
-
-`terraform apply` — команда, которая **реально создаёт/меняет ресурсы в Azure**.
-
-Обычно:
-
-* PR → только plan
-* main → apply (после review + merge)
-  И да: можно сделать “environment approval”, чтобы apply ждал ручного approve в GitHub UI.
-
-Это не отдельный файл, это **команда** в workflow step.
+* to see changes before merging,
+* to catch errors before apply,
+* it's like a "preview of the infrastructure".
 
 ---
 
-## 15) “destroy manual” — что он должен уничтожить
+## 14) "apply" — What Is It and How Is It Configured
 
-Всё, что Terraform создал и записал в state:
+`terraform apply` is the command that **actually creates/changes resources in Azure**.
+
+Usually:
+
+* PR → plan only
+* main → apply (after review + merge)
+  And yes: you can set up "environment approval" so that apply waits for manual approval in the GitHub UI.
+
+This is not a separate file, it is a **command** in a workflow step.
+
+---
+
+## 15) "destroy manual" — What Should It Destroy
+
+Everything Terraform created and recorded in state:
 
 * resource group,
 * vnet/subnet,
@@ -205,167 +205,167 @@ Terraform тут просто команда, которую runner выполн
 * VM,
 * schedule.
 
-Если state хранится правильно, destroy будет чистый.
+If state is stored correctly, destroy will be clean.
 
 ---
 
-## 16) “теги на ресурсы” — что такое “ресурсы” и зачем теги
+## 16) "tags on resources" — What Are "Resources" and Why Do They Need Tags
 
-Ресурс = любой объект в Azure (VM, сеть, IP, диски, NSG, RG…).
+A resource = any object in Azure (VM, network, IP, disks, NSG, RG…).
 
-Теги нужны для:
+Tags are needed for:
 
-* порядка,
-* поиска,
-* биллинга/отчётов,
-* политик/автоматизации.
-
----
-
-## 17) Автошатдаун по расписанию — да, это хорошая практика
-
-Да, стоит. В учебных задачах — прям мастхэв.
+* organization,
+* searching,
+* billing/reports,
+* policies/automation.
 
 ---
 
-# Теперь про Terraform: что значит “каждую строчку” и почему так
+## 17) Auto-shutdown on a Schedule — Yes, That's Good Practice
 
-Полный построчный разбор всего файла будет очень длинный, поэтому дам **“блок за блоком”**: что делает каждый ресурс + почему такие параметры, и где доки.
+Yes, worth it. In learning tasks — an absolute must.
+
+---
+
+# Now About Terraform: What "Every Line" Means and Why It's That Way
+
+A full line-by-line breakdown of every file would be very long, so I'll go **block by block**: what each resource does + why those parameters, and where the docs are.
 
 ### `terraform { required_providers ... }`
 
-Фиксируешь версию провайдера AzureRM → стабильные сборки.
-Док по ресурсам/провайдеру: ([registry.terraform.io][6])
+Pins the AzureRM provider version → stable builds.
+Docs for resources/provider: ([registry.terraform.io][6])
 
 ### `provider "azurerm" { features {} }`
 
-Включает провайдер AzureRM, `features {}` обязателен (так устроен провайдер).
+Enables the AzureRM provider; `features {}` is required (that's how the provider is designed).
 
 ### `azurerm_resource_group`
 
-RG — контейнер для всех ресурсов. Удобно удалять одним махом и давать права.
+RG — a container for all resources. Convenient to delete in one go and assign permissions.
 
 ### `azurerm_virtual_network` + `azurerm_subnet`
 
-Минимальная сеть, куда подключится VM.
+A minimal network for the VM to connect to.
 
-Почему адреса такие: просто приватный диапазон, чтобы не конфликтовал с домашними сетями.
+Why those addresses: just a private range so it doesn't conflict with home networks.
 
 ### `azurerm_network_security_group` + rule SSH 22
 
-NSG разрешает SSH, иначе ты не подключишься.
+NSG allows SSH; otherwise you can't connect.
 
-Почему source `*` — это “упрощённо для демо”. В реальном проекте лучше ограничить по IP.
+Why source `*` — this is "simplified for a demo". In a real project, it's better to restrict by IP.
 
 ### `azurerm_public_ip`
 
-Публичный IP, чтобы VM была доступна из интернета по SSH. Allocation Dynamic — проще/дешевле.
+A public IP so the VM is accessible from the internet via SSH. Allocation Dynamic — simpler/cheaper.
 
 ### `azurerm_network_interface`
 
-NIC — сетевая карта VM. Ей назначаем subnet + public ip.
+The NIC — the VM's network card. We assign it a subnet + public IP.
 
 ### `azurerm_network_interface_security_group_association`
 
-Привязка NSG к NIC (чтобы firewall реально применился).
+Attaches the NSG to the NIC (so the firewall actually takes effect).
 
 ### `azurerm_linux_virtual_machine`
 
-Сама VM:
+The VM itself:
 
-* `size = var.vm_size` — чтобы можно было менять размер без правки ресурса.
-* `admin_ssh_key` — логин по SSH ключу (лучше чем пароль).
-* `os_disk` Standard_LRS — самый базовый тип.
-* `source_image_reference` Ubuntu 22.04 LTS — стабильный дефолт.
+* `size = var.vm_size` — so you can change the size without editing the resource.
+* `admin_ssh_key` — SSH key login (better than a password).
+* `os_disk` Standard_LRS — the most basic type.
+* `source_image_reference` Ubuntu 22.04 LTS — a stable default.
 
-Док по этому ресурсу: ([registry.terraform.io][6])
+Docs for this resource: ([registry.terraform.io][6])
 
 ### `azurerm_dev_test_global_vm_shutdown_schedule`
 
-Ежедневно выключает VM в заданное время/таймзоне.
-Док: ([registry.terraform.io][7])
+Shuts down the VM daily at a specified time/timezone.
+Docs: ([registry.terraform.io][7])
 
 ---
 
-# Пункт 7: план “минимально проверить, что работает”, и разбить задачу на подзадачи
+# Point 7: Plan to "Minimally Verify That It Works" and Split the Task into Sub-tasks
 
-Вот “дебажный” план (делай строго по шагам):
+Here is a "debugging" plan (follow the steps strictly):
 
-## Шаг A — Terraform локально без GitHub Actions (самая быстрая проверка)
+## Step A — Terraform Locally Without GitHub Actions (Fastest Check)
 
-1. Создай `infra/` и туда Terraform файлы.
-2. Локально:
+1. Create `infra/` and put the Terraform files inside.
+2. Locally:
 
    * `terraform fmt`
    * `terraform init`
    * `terraform validate`
    * `terraform plan -var location=northeurope -var vm_size=Standard_B1s -var ssh_public_key="..."`
 
-Цель: убедиться, что **код вообще валидный**.
+Goal: verify that **the code is actually valid**.
 
-## Шаг B — Apply локально (чтобы отделить проблемы Azure от GitHub)
+## Step B — Apply Locally (to Separate Azure Problems from GitHub)
 
-3. `terraform apply` (вручную)
+3. `terraform apply` (manually)
 
-* Если упало `SkuNotAvailable`: меняй `location` и `vm_size` и пробуй снова.
-* Запиши 2–3 рабочие комбинации “region + size” (если найдёшь).
+* If `SkuNotAvailable` occurs: change `location` and `vm_size` and try again.
+* Write down 2–3 working combinations of "region + size" (if you find them).
 
-Цель: понять, что **Azure реально даёт создать VM**.
+Goal: confirm that **Azure actually lets you create a VM**.
 
-## Шаг C — GitHub Actions только fmt/validate/plan
+## Step C — GitHub Actions With Only fmt/validate/plan
 
-4. Добавь workflow так, чтобы на PR делал только `fmt/validate/plan`, но без apply.
+4. Add a workflow that only does `fmt/validate/plan` on PRs, but no apply.
 
-Цель: убедиться, что pipeline запускается и умеет `terraform plan`.
+Goal: confirm that the pipeline runs and can do `terraform plan`.
 
-## Шаг D — OIDC
+## Step D — OIDC
 
-5. Настрой OIDC, и проверь, что step `azure/login` проходит, и дальше `terraform init/plan` работает в Actions.
+5. Set up OIDC and verify that the `azure/login` step passes and `terraform init/plan` works in Actions.
 
-Цель: убедиться, что **аутентификация** верная.
+Goal: confirm that **authentication** is correct.
 
-## Шаг E — Apply на main с Environment approval
+## Step E — Apply on Main with Environment Approval
 
-6. Включи apply на `push main` + environment reviewers.
-7. Сделай PR → merge → approve environment → apply.
+6. Enable apply on `push main` + environment reviewers.
+7. Create a PR → merge → approve environment → apply.
 
-Цель: полный end-to-end.
+Goal: full end-to-end.
 
-## Шаг F — Destroy manual
+## Step F — Manual Destroy
 
-8. `workflow_dispatch action=destroy` (или локально `terraform destroy`).
+8. `workflow_dispatch action=destroy` (or `terraform destroy` locally).
 
-Цель: clean-up и демонстрация “cost control”.
-
----
-
-## 8.3 “не capacity guarantee” — объяснение
-
-“Free tier / eligible VM size” = **про цену**, но **не обещание**, что в конкретном регионе будет свободная мощность именно сейчас.
-
-Т.е. Azure может сказать:
-
-* “да, B1s входит в free-tier по биллингу”
-* но одновременно:
-* “в East US нет capacity для B1s для твоей подписки” → `SkuNotAvailable`
+Goal: clean-up and demonstrating "cost control".
 
 ---
 
-## Зачем `vm_size` переменная
+## 8.3 "not a capacity guarantee" — Explanation
 
-Чтобы ты мог:
+"Free tier / eligible VM size" = **about pricing**, but **not a promise** that a specific region will have free capacity for it right now.
 
-* быстро менять размер, не редактируя ресурс VM,
-* передавать его из workflow inputs,
-* делать fallback: “попробуй B1s, если нет — B1ls”.
+That is, Azure can say:
 
-Это нормальная инженерная “ручка” для отладки и реальной эксплуатации.
+* "yes, B1s qualifies for free-tier billing"
+* but at the same time:
+* "there is no capacity for B1s in East US for your subscription" → `SkuNotAvailable`
 
 ---
 
-# Ссылки на документацию
+## Why `vm_size` Is a Variable
 
-(как просил — даю)
+So you can:
+
+* quickly change the size without editing the VM resource,
+* pass it from workflow inputs,
+* implement fallback: "try B1s; if unavailable — try B1ls".
+
+This is a normal engineering "knob" for debugging and real operations.
+
+---
+
+# Documentation Links
+
+(as requested — here they are)
 
 ```text
 GitHub Actions: About workflows
@@ -398,11 +398,11 @@ https://learn.microsoft.com/azure/virtual-machines/linux/quick-create-terraform
 
 ---
 
-Если хочешь — в следующем сообщении я:
+If you want — in the next message I can:
 
-* перепишу Terraform так, чтобы **SSH rule** была ограничена твоим IP (безопаснее),
-* добавлю **remote backend для state** (Azure Storage + state locking — тоже “DevOps”),
-* и предложу “минимальный вариант” Terraform (VM без auto-shutdown), чтобы сначала поднять VM, а потом усложнять.
+* rewrite Terraform so that **the SSH rule** is restricted to your IP (more secure),
+* add a **remote backend for state** (Azure Storage + state locking — also "DevOps"),
+* and suggest a "minimal version" of Terraform (VM without auto-shutdown), so you can first bring up the VM and then add complexity.
 
 [1]: https://docs.github.com/actions/using-workflows/events-that-trigger-workflows?utm_source=chatgpt.com "Events that trigger workflows"
 [2]: https://docs.github.com/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-azure?utm_source=chatgpt.com "Configuring OpenID Connect in Azure"

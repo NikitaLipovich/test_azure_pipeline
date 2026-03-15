@@ -50,7 +50,7 @@ Then add a **Federated Credential** in Azure Portal:
 | `AZURE_CLIENT_ID` | App Registration Application (client) ID |
 | `AZURE_TENANT_ID` | Azure AD Tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure Subscription ID |
-| `SSH_PUBLIC_KEY` | Content of your public key, e.g. `ssh-ed25519 AAAA...` |
+| `SSH_PUBLIC_KEY` | Content of your RSA public key, e.g. `ssh-rsa AAAA...` |
 
 ### 3. GitHub Environment
 
@@ -88,21 +88,23 @@ Create an environment named **`azure-prod`** (Settings → Environments) and opt
 ### Fallback regions (try in order)
 
 ```
-northeurope   ← default, usually good
+eastus        ← current default (dev.tfvars)
 westeurope
+northeurope
 uksouth
 canadacentral
-swedencentral
 ```
 
-### Fallback VM sizes (all qualify for free-tier billing)
+### Fallback VM sizes
 
 ```
-Standard_B1s    ← default (1 vCPU, 1 GB RAM)
-Standard_B1ls   ← smaller, often more available
-Standard_B1ms   ← 1 vCPU, 2 GB RAM
-Standard_B2s    ← 2 vCPU, 4 GB RAM (not always free)
+Standard_D2s_v3  ← current default (dev.tfvars), stable availability
+Standard_B2s     ← cheaper but often unavailable
+Standard_B1s     ← free-tier eligible but frequently capacity-restricted
 ```
+
+> Note: `Standard_B1s` is free-tier eligible but has frequent capacity restrictions.
+> `Standard_D2s_v3` is not free-tier but is reliably available (~$0.096/hr).
 
 Re-run the workflow with a different `location`/`vm_size` combination without touching any code.
 
@@ -112,7 +114,7 @@ Re-run the workflow with a different `location`/`vm_size` combination without to
 
 ```bash
 cd infra
-export TF_VAR_ssh_public_key="$(cat ~/.ssh/id_ed25519.pub)"
+export TF_VAR_ssh_public_key="$(cat ~/.ssh/azure_vm_key_rsa.pub)"
 
 az login
 terraform init
