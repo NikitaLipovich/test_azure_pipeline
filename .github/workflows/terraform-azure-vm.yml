@@ -51,6 +51,7 @@ jobs:
     # Required Reviewers gate in GitHub Environments prevents accidental apply
     environment: azure-prod
 
+    # all command wull be run in folder infra, where .tf files
     defaults:
       run:
         working-directory: infra
