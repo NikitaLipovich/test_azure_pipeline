@@ -90,6 +90,7 @@ jobs:
         id: plan
         env:
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_ENV: ${{ inputs.environment || 'dev' }}
           OVERRIDE_LOCATION: ${{ inputs.location }}
           OVERRIDE_VM_SIZE: ${{ inputs.virtual_machine_size }}
@@ -131,6 +132,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
         env:
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: terraform apply -input=false -auto-approve tfplan
 
       # ── Destroy (manual only) ─────────────────────────────────────────────────
@@ -138,6 +140,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
         env:
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_ENV: ${{ inputs.environment || 'dev' }}
           OVERRIDE_LOCATION: ${{ inputs.location }}
           OVERRIDE_VM_SIZE: ${{ inputs.virtual_machine_size }}
